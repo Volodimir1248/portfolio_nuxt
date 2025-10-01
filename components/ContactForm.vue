@@ -56,7 +56,14 @@
         <span v-if="!isSubmitting">Отправить сообщение</span>
         <span v-else>Отправка...</span>
       </button>
-      <p class="muted" role="status" aria-live="polite">{{ note }}</p>
+      <p
+        v-if="note.text"
+        :class="['note', note.state]"
+        role="status"
+        aria-live="polite"
+      >
+        {{ note.text }}
+      </p>
     </div>
   </form>
 </template>
@@ -64,9 +71,19 @@
 <script setup lang="ts">
 const contactSettings = useContactSettingsStore()
 
+type NoteState = 'idle' | 'info' | 'success' | 'error'
+
 const form = reactive({ name: '', email: '', subject: '', message: '' })
-const note = ref('')
+const note = reactive<{ text: string; state: NoteState }>({
+  text: '',
+  state: 'idle'
+})
 const isSubmitting = ref(false)
+
+const setNote = (text: string, state: NoteState) => {
+  note.text = text
+  note.state = state
+}
 
 const validateEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 
@@ -80,20 +97,20 @@ const onSubmit = async () => {
   if (!form.message) errors.push('Сообщение пустое')
 
   if (errors.length) {
-    note.value = `⚠ ${errors.join(' · ')}`
+    setNote(`⚠ ${errors.join(' · ')}`, 'error')
     return
   }
 
   const endpoint = contactSettings.handlerUrl?.trim()
 
   if (!endpoint) {
-    note.value = '⚠ Не настроен адрес для отправки сообщения'
+    setNote('⚠ Не настроен адрес для отправки сообщения', 'error')
     return
   }
 
   try {
     isSubmitting.value = true
-    note.value = '⌛ Отправка...'
+    setNote('⌛ Отправка...', 'info')
 
     const body = new URLSearchParams({
       name: form.name,
@@ -117,11 +134,11 @@ const onSubmit = async () => {
     }
 
     const successMessage = responseText || 'Сообщение отправлено. Я свяжусь с вами в ближайшее время!'
-    note.value = `✔ ${successMessage}`
+    setNote(`✔ ${successMessage}`, 'success')
     Object.assign(form, { name: '', email: '', subject: '', message: '' })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Произошла ошибка при отправке'
-    note.value = `⚠ ${message}`
+    setNote(`⚠ ${message}`, 'error')
   } finally {
     isSubmitting.value = false
   }
@@ -183,6 +200,23 @@ textarea.control {
   flex-direction: column;
   gap: 12px;
   align-items: flex-start;
+}
+
+.note {
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.note.success {
+  color: color-mix(in oklab, var(--success, #0a7f3b) 80%, var(--text));
+}
+
+.note.error {
+  color: color-mix(in oklab, var(--danger, #b3261e) 80%, var(--text));
+}
+
+.note.info {
+  color: color-mix(in oklab, var(--primary) 80%, var(--text));
 }
 
 @media (max-width: 640px) {
