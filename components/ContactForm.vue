@@ -51,9 +51,10 @@
       ></textarea>
     </div>
     <div class="form-footer">
-      <button class="btn btn-primary" type="submit">
+      <button class="btn btn-primary" type="submit" :disabled="isSubmitting">
         <i class="fa-regular fa-paper-plane"></i>
-        Отправить сообщение
+        <span v-if="!isSubmitting">Отправить сообщение</span>
+        <span v-else>Отправка...</span>
       </button>
       <p class="muted" role="status" aria-live="polite">{{ note }}</p>
     </div>
@@ -61,20 +62,68 @@
 </template>
 
 <script setup lang="ts">
+const contactSettings = useContactSettingsStore()
+
 const form = reactive({ name: '', email: '', subject: '', message: '' })
 const note = ref('')
+const isSubmitting = ref(false)
 
-const onSubmit = () => {
+const validateEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+
+const onSubmit = async () => {
+  if (isSubmitting.value) return
+
   const errors: string[] = []
 
   if (!form.name) errors.push('Введите имя')
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errors.push('Проверьте email')
+  if (!validateEmail(form.email)) errors.push('Проверьте email')
   if (!form.message) errors.push('Сообщение пустое')
 
-  note.value = errors.length ? `⚠ ${errors.join(' · ')}` : '✔ Спасибо! Сообщение отправлено (демо).'
+  if (errors.length) {
+    note.value = `⚠ ${errors.join(' · ')}`
+    return
+  }
 
-  if (!errors.length) {
+  const endpoint = contactSettings.handlerUrl?.trim()
+
+  if (!endpoint) {
+    note.value = '⚠ Не настроен адрес для отправки сообщения'
+    return
+  }
+
+  try {
+    isSubmitting.value = true
+    note.value = '⌛ Отправка...'
+
+    const body = new URLSearchParams({
+      name: form.name,
+      email: form.email,
+      subject: form.subject,
+      message: form.message
+    })
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+      },
+      body
+    })
+
+    const responseText = await response.text()
+
+    if (!response.ok) {
+      throw new Error(responseText || 'Не удалось отправить сообщение')
+    }
+
+    const successMessage = responseText || 'Сообщение отправлено. Я свяжусь с вами в ближайшее время!'
+    note.value = `✔ ${successMessage}`
     Object.assign(form, { name: '', email: '', subject: '', message: '' })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Произошла ошибка при отправке'
+    note.value = `⚠ ${message}`
+  } finally {
+    isSubmitting.value = false
   }
 }
 </script>
